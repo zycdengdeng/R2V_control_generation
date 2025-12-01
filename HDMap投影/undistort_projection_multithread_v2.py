@@ -113,7 +113,7 @@ def get_3d_bbox_corners(center, size, yaw):
     return corners_rotated
 
 
-# 3D bbox的12条边定义
+# 3D bbox的12条边定义（用于线框模式）
 BBOX_3D_EDGES = [
     # 底面4条边
     (0, 1), (1, 2), (2, 3), (3, 0),
@@ -123,10 +123,153 @@ BBOX_3D_EDGES = [
     (0, 4), (1, 5), (2, 6), (3, 7)
 ]
 
+# 3D bbox的6个面定义（用于实心渲染）
+# 每个面由4个角点索引组成，顺序为逆时针（从外部看）
+BBOX_3D_FACES = {
+    'bottom': [0, 3, 2, 1],  # 底面 (z-)
+    'top': [4, 5, 6, 7],     # 顶面 (z+)
+    'front': [0, 1, 5, 4],   # 前面 (y-)
+    'back': [2, 3, 7, 6],    # 后面 (y+)
+    'left': [0, 4, 7, 3],    # 左面 (x-)
+    'right': [1, 2, 6, 5],   # 右面 (x+)
+}
+
+# 面的亮度系数（模拟光照，顶面最亮，侧面次之，底面最暗）
+FACE_BRIGHTNESS = {
+    'top': 1.0,      # 顶面最亮
+    'front': 0.7,    # 前面
+    'back': 0.5,     # 后面
+    'left': 0.6,     # 左面
+    'right': 0.6,    # 右面
+    'bottom': 0.3,   # 底面最暗
+}
+
+
+def adjust_color_brightness(color, brightness):
+    """调整颜色亮度"""
+    return tuple(int(c * brightness) for c in color)
+
+
+def get_face_normal(corners_3d, face_indices):
+    """计算面的法向量（用于背面剔除）"""
+    p0 = np.array(corners_3d[face_indices[0]])
+    p1 = np.array(corners_3d[face_indices[1]])
+    p2 = np.array(corners_3d[face_indices[2]])
+
+    v1 = p1 - p0
+    v2 = p2 - p0
+    normal = np.cross(v1, v2)
+
+    # 归一化
+    norm = np.linalg.norm(normal)
+    if norm > 0:
+        normal = normal / norm
+    return normal
+
+
+def get_face_center_depth(corners_cam, face_indices, corners_valid):
+    """计算面中心的深度（z值），用于排序"""
+    valid_depths = []
+    for idx in face_indices:
+        if corners_valid[idx]:
+            valid_depths.append(corners_cam[idx][2])  # z值
+
+    if valid_depths:
+        return np.mean(valid_depths)
+    return float('inf')
+
+
+def is_face_visible(corners_cam, face_indices, corners_valid):
+    """判断面是否可见（背面剔除）"""
+    # 获取面的有效顶点
+    valid_corners = []
+    for idx in face_indices:
+        if corners_valid[idx]:
+            valid_corners.append(corners_cam[idx])
+
+    if len(valid_corners) < 3:
+        return False
+
+    # 计算面的法向量
+    p0 = np.array(valid_corners[0])
+    p1 = np.array(valid_corners[1])
+    p2 = np.array(valid_corners[2])
+
+    v1 = p1 - p0
+    v2 = p2 - p0
+    normal = np.cross(v1, v2)
+
+    # 计算面中心
+    face_center = np.mean(valid_corners, axis=0)
+
+    # 视线方向（从相机原点指向面中心）
+    view_dir = face_center  # 相机在原点，所以视线方向就是面中心坐标
+
+    # 如果法向量与视线方向的点积 < 0，说明面朝向相机，可见
+    return np.dot(normal, view_dir) < 0
+
+
+def draw_3d_bbox_solid(img, corners_2d, corners_valid, corners_cam, color):
+    """
+    绘制实心3D bbox（带光照效果）
+
+    Args:
+        img: 图像
+        corners_2d: 8个角点的2D坐标 [(x, y), ...]
+        corners_valid: 8个角点的有效性标记 [True/False, ...]
+        corners_cam: 8个角点在相机坐标系的3D坐标 [(x, y, z), ...]
+        color: 基础颜色 (B, G, R)
+    """
+    if corners_2d is None or len(corners_2d) != 8:
+        return
+
+    # 收集所有可见的面及其深度
+    visible_faces = []
+
+    for face_name, face_indices in BBOX_3D_FACES.items():
+        # 检查面的所有顶点是否有效
+        all_valid = all(corners_valid[idx] for idx in face_indices)
+        if not all_valid:
+            continue
+
+        # 背面剔除：检查面是否朝向相机
+        if not is_face_visible(corners_cam, face_indices, corners_valid):
+            continue
+
+        # 计算面中心深度
+        depth = get_face_center_depth(corners_cam, face_indices, corners_valid)
+
+        # 获取面的2D投影顶点
+        face_pts = np.array([[int(corners_2d[idx][0]), int(corners_2d[idx][1])]
+                            for idx in face_indices], dtype=np.int32)
+
+        # 获取面的亮度
+        brightness = FACE_BRIGHTNESS[face_name]
+        face_color = adjust_color_brightness(color, brightness)
+
+        visible_faces.append({
+            'pts': face_pts,
+            'color': face_color,
+            'depth': depth,
+            'name': face_name
+        })
+
+    # 按深度从远到近排序（先画远的，再画近的，实现遮挡）
+    visible_faces.sort(key=lambda x: x['depth'], reverse=True)
+
+    # 绘制面
+    for face in visible_faces:
+        cv2.fillPoly(img, [face['pts']], face['color'])
+
+    # 可选：绘制边框线（使轮廓更清晰）
+    for face in visible_faces:
+        cv2.polylines(img, [face['pts']], isClosed=True,
+                     color=adjust_color_brightness(color, 0.3), thickness=1)
+
 
 def draw_3d_bbox(img, corners_2d, corners_valid, color, thickness=2):
     """
-    绘制3D bbox的12条边
+    绘制3D bbox的12条边（线框模式，保留作为备用）
 
     Args:
         img: 图像
@@ -294,8 +437,10 @@ class HDMapProjectorMultiThread:
 
         Returns:
             bbox_2d: [x1, y1, x2, y2] or None
-            corners_2d: 所有8个角点的2D坐标列表 [(x, y), ...] (无效点为None)
+            corners_2d: 所有8个角点的2D坐标列表 [(x, y), ...]
             corners_valid: 8个角点的有效性标记列表 [True/False, ...]
+            corners_cam: 8个角点在相机坐标系的3D坐标 [(x, y, z), ...]
+            obj_depth: 物体中心深度（用于排序）
         """
         cam_info = VEHICLE_CAMERAS[cam_id]
         img_w, img_h = cam_info["resolution"]
@@ -323,7 +468,10 @@ class HDMapProjectorMultiThread:
         # 标记相机前方的点（z > 0.1）
         valid_mask = points_cam[:, 2] > 0.1
         if not valid_mask.any():
-            return None, None, None
+            return None, None, None, None, None
+
+        # 计算物体中心深度（用于深度排序）
+        obj_depth = np.mean(points_cam[valid_mask, 2])
 
         # 步骤3: 相机坐标系 → 图像坐标系（去畸变投影）
         if cam_id in [2, 3, 4] and np.max(np.abs(D)) > 1:
@@ -336,8 +484,12 @@ class HDMapProjectorMultiThread:
         # 对所有8个角点进行投影，保持顺序
         corners_2d = []
         corners_valid = []
+        corners_cam = []  # 保存相机坐标系的3D坐标
 
         for i in range(8):
+            # 保存相机坐标系的3D坐标
+            corners_cam.append(points_cam[i].tolist())
+
             if valid_mask[i]:
                 # 点在相机前方，可以投影
                 pt_cam = points_cam[i]
@@ -361,7 +513,7 @@ class HDMapProjectorMultiThread:
         # 计算有效点的2D bbox
         valid_points = [corners_2d[i] for i in range(8) if corners_valid[i]]
         if not valid_points:
-            return None, None, None
+            return None, None, None, None, None
 
         valid_points = np.array(valid_points)
         x1, y1 = valid_points.min(axis=0)
@@ -369,7 +521,7 @@ class HDMapProjectorMultiThread:
 
         # 检查是否在图像内
         if x2 < 0 or y2 < 0 or x1 > img_w or y1 > img_h:
-            return None, None, None
+            return None, None, None, None, None
 
         # 裁剪到图像范围
         x1 = max(0, x1)
@@ -379,7 +531,7 @@ class HDMapProjectorMultiThread:
 
         bbox_2d = [float(x1), float(y1), float(x2), float(y2)]
 
-        return bbox_2d, corners_2d, corners_valid
+        return bbox_2d, corners_2d, corners_valid, corners_cam, obj_depth
 
     def process_single_camera(self, cam_id, objects_data, rotate_world2lidar,
                              trans_world2lidar, timestamp_ms, gt_dir,
@@ -403,7 +555,7 @@ class HDMapProjectorMultiThread:
         # 投影所有物体的bbox
         for obj_data in objects_data:
             bbox_corners = obj_data['bbox_corners']
-            bbox_2d, corners_2d, corners_valid = self.project_bbox_to_camera(
+            bbox_2d, corners_2d, corners_valid, corners_cam, obj_depth = self.project_bbox_to_camera(
                 bbox_corners, rotate_world2lidar, trans_world2lidar, cam_id
             )
 
@@ -415,22 +567,29 @@ class HDMapProjectorMultiThread:
                     'bbox_2d': bbox_2d,
                     'corners_2d': corners_2d,
                     'corners_valid': corners_valid,
+                    'corners_cam': corners_cam,  # 相机坐标系3D坐标
+                    'obj_depth': obj_depth,      # 物体深度
                     'bbox_3d': obj_data['bbox_3d']
                 })
 
-        # 生成纯bbox图（黑色背景 + 彩色3D bbox框）
+        # 按深度从远到近排序（先画远的，再画近的，实现遮挡）
+        if results['bboxes']:
+            results['bboxes'].sort(key=lambda x: x['obj_depth'], reverse=True)
+
+        # 生成纯bbox图（黑色背景 + 实心3D bbox）
         # 总是生成overlay：有bbox就绘制，没bbox就是纯黑色
         cam_info = VEHICLE_CAMERAS[cam_id]
         img_w, img_h = cam_info["resolution"]
         bbox_img = np.zeros((img_h, img_w, 3), dtype=np.uint8)  # 黑色背景
 
         if results['bboxes']:
-            # 如果有bbox，绘制3D bbox在黑色背景上
+            # 按深度排序后绘制实心3D bbox
             for bbox_info in results['bboxes']:
                 color = tuple(int(c) for c in bbox_info['color'])
-                # 使用新的3D bbox绘制函数
-                draw_3d_bbox(bbox_img, bbox_info['corners_2d'],
-                            bbox_info['corners_valid'], color, thickness=2)
+                # 使用实心3D bbox绘制函数
+                draw_3d_bbox_solid(bbox_img, bbox_info['corners_2d'],
+                                   bbox_info['corners_valid'],
+                                   bbox_info['corners_cam'], color)
 
         # 总是保存overlay（有bbox就是黑色+bbox，没bbox就是纯黑色）
         overlay_output = overlay_dir / f"{cam_name}.jpg"
@@ -442,12 +601,13 @@ class HDMapProjectorMultiThread:
             bbox_on_gt_img = results['gt_img'].copy()
 
             if results['bboxes']:
-                # 如果有bbox，绘制3D bbox在GT图像上
+                # 按深度排序后绘制实心3D bbox
                 for bbox_info in results['bboxes']:
                     color = tuple(int(c) for c in bbox_info['color'])
-                    # 使用新的3D bbox绘制函数
-                    draw_3d_bbox(bbox_on_gt_img, bbox_info['corners_2d'],
-                                bbox_info['corners_valid'], color, thickness=2)
+                    # 使用实心3D bbox绘制函数
+                    draw_3d_bbox_solid(bbox_on_gt_img, bbox_info['corners_2d'],
+                                       bbox_info['corners_valid'],
+                                       bbox_info['corners_cam'], color)
 
             # 总是保存bbox_on_gt（有bbox就是GT+bbox，没bbox就是纯GT）
             bbox_on_gt_output = bbox_on_gt_dir / f"{cam_name}.jpg"
