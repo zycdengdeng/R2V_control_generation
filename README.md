@@ -30,8 +30,64 @@
 2. 一开始的菜单同上，一般来讲直接选Batch就可以，然后选择自己想要的功能。
 3. 关于每个seg的帧数，seg的数量和视频帧率这些默认值是符合cosmos post training demo的配置，默认1280 720p，生成在/mnt/zihanw/proj_utils_pro/transfer_video_maker/output，主要分类依据不是场景号，是根据transfer控制头分类的。
 
+## 因为有一些clip有问题，写指令看看哪个里面缺少GT，然后确定后再次检查
+for clip in 082 083 084 085 086; do
+  for d in /mnt/zihanw/proj_utils_pro/blur投影/$clip/$clip/[0-9]*/; do name=$(basename "$d"); gt=$(ls "$d/gt" 2>/dev/null | wc -l); proj=$(ls "$d/proj" 2>/dev/null | wc -l); if ! { [ "$gt" -eq 7 ] && { [ "$proj" -eq 7 ] || [ "$proj" -eq 14 ]; }; }; then echo "blur/$clip/$name: gt=$gt, proj=$proj"; fi; done
+  for d in /mnt/zihanw/proj_utils_pro/depth投影/$clip/$clip/[0-9]*/; do name=$(basename "$d"); gt=$(ls "$d/gt" 2>/dev/null | wc -l); depth=$(ls "$d/depth" 2>/dev/null | wc -l); if ! { [ "$gt" -eq 7 ] && { [ "$depth" -eq 7 ] || [ "$depth" -eq 14 ]; }; }; then echo "depth/$clip/$name: gt=$gt, depth=$depth"; fi; done
+  for d in /mnt/zihanw/proj_utils_pro/HDMap投影/$clip/$clip/[0-9]*/; do name=$(basename "$d"); gt=$(ls "$d/gt" 2>/dev/null | wc -l); overlay=$(ls "$d/overlay" 2>/dev/null | wc -l); if ! { [ "$gt" -eq 7 ] && { [ "$overlay" -eq 7 ] || [ "$overlay" -eq 14 ]; }; }; then echo "HDMap/$clip/$name: gt=$gt, overlay=$overlay"; fi; done
+done
+
+有一些clip缺部分视角真值，补齐的方法：
+修复步骤
+1. 先 dry_run 检查缺失情况
+cd /mnt/zihanw/proj_utils_pro/transfer_video_maker
+
+# 检查 blur投影
+python fix_missing_gt.py \
+    --input_dir "/mnt/zihanw/proj_utils_pro/blur投影" \
+    --scenes 082 083 084 085 086 \
+    --dry_run
+
+# 检查 depth投影
+python fix_missing_gt.py \
+    --input_dir "/mnt/zihanw/proj_utils_pro/depth投影" \
+    --scenes 082 083 084 085 086 \
+    --dry_run
+
+# 检查 HDMap投影
+python fix_missing_gt.py \
+    --input_dir "/mnt/zihanw/proj_utils_pro/HDMap投影" \
+    --scenes 082 083 084 085 086 \
+    --dry_run
+
+2. 确认后执行实际修复
+# 修复 blur投影
+python fix_missing_gt.py \
+    --input_dir "/mnt/zihanw/proj_utils_pro/blur投影" \
+    --scenes 082 083 084 085 086
+
+# 修复 depth投影
+python fix_missing_gt.py \
+    --input_dir "/mnt/zihanw/proj_utils_pro/depth投影" \
+    --scenes 082 083 084 085 086
+
+# 修复 HDMap投影
+python fix_missing_gt.py \
+    --input_dir "/mnt/zihanw/proj_utils_pro/HDMap投影" \
+    --scenes 082 083 084 085 086
+
+或者一条命令搞定所有（修复模式）
+cd /mnt/zihanw/proj_utils_pro/transfer_video_maker
+
+for proj in "blur投影" "depth投影" "HDMap投影"; do
+    echo "========== 修复 $proj =========="
+    python fix_missing_gt.py \
+        --input_dir "/mnt/zihanw/proj_utils_pro/$proj" \
+        --scenes 082 083 084 085 086
+done
+
 ## caption替换方法
-1. 执行脚本 /mnt/zihanw/proj_utils_pro/transfer_video_maker/generate_transfer2_videos.py
+1. 执行脚本 /mnt/zihanw/proj_utils_pro/transfer_video_maker/caption一键修理/update_captions.py
 2. 如果是替换单个头，就选单个，然后选择适应这个头的选项，每个选项都说明自己是哪个控制头的caption
 3. 如果替换多个头，直接选替换全部，然后会多一个自适应匹配的选项，选那个就可以
 4. 想替换预设caption直接改py脚本里面的txt就可以了
