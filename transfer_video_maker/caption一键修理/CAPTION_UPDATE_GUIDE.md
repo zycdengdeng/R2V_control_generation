@@ -18,7 +18,7 @@
 ### 交互式模式
 
 ```bash
-cd /mnt/zihanw/车路协同投影工作/集合啦投影森友会
+cd transfer_video_maker/caption一键修理
 python3 update_captions.py
 ```
 

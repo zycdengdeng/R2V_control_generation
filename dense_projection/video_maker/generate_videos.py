@@ -215,7 +215,7 @@ def interactive_input():
             return None
 
     # 4. 投影输出根目录
-    default_proj_root = "/mnt/zihanw/proj_utils_pro/dense_projection"
+    default_proj_root = str(Path(__file__).resolve().parent.parent)
     proj_root_input = input(f"\n投影输出根目录 (默认 {default_proj_root}): ").strip()
     proj_root = proj_root_input if proj_root_input else default_proj_root
 
@@ -224,7 +224,7 @@ def interactive_input():
     fps = int(fps_input) if fps_input else 10
 
     # 6. 视频输出目录
-    default_output = f"/mnt/zihanw/dense_projection_videos"
+    default_output = str(Path(__file__).resolve().parent.parent / "output_videos")
     output_input = input(f"\n视频输出目录 (默认 {default_output}): ").strip()
     output_root = output_input if output_input else default_output
 

@@ -10,9 +10,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# 默认配置
-PROJECT_ROOT="/mnt/zihanw/proj_utils_pro/transfer_video_maker"
-OUTPUT_BASE="/mnt/zihanw/proj_utils_pro/transfer_video_maker/output"
+# 默认配置（基于脚本所在目录）
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$SCRIPT_DIR"
+OUTPUT_BASE="$SCRIPT_DIR/output"
 
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}  Transfer2 视频数据集生成器${NC}"

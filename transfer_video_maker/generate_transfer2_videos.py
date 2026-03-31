@@ -38,7 +38,7 @@ def parse_args():
                         help='项目类型（如 depth, depth_dense, hdmap 等）')
 
     parser.add_argument('--project-root', type=str,
-                        default='/mnt/zihanw/proj_utils_pro',
+                        default=str(Path(__file__).resolve().parent.parent),
                         help='项目根目录')
 
     parser.add_argument('--scenes', type=str, nargs='+', required=True,

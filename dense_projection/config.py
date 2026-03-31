@@ -15,8 +15,9 @@ DYNAMIC_PCD_ROOT = "/mnt/zongrx/PointCloudMerge_batch/runs"
 # 静态地图根目录
 STATIC_MAP_ROOT = "/mnt/zihanw/merge_dyn_stat/static_maps"
 
-# Transform JSON 根目录
-TRANSFORM_JSON_ROOT = "/mnt/zihanw/proj_utils_pro/transform_json"
+# Transform JSON 根目录（相对于项目根目录）
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+TRANSFORM_JSON_ROOT = os.path.join(_PROJECT_ROOT, "transform_json")
 
 # 合并后PCD输出目录
 MERGED_PCD_OUTPUT = "/mnt/zihanw/merge_dyn_stat/merge_pcd"
