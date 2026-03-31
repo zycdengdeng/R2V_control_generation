@@ -5,7 +5,7 @@
 
 支持：
 - 自动识别所有7个相机目录
-- 支持模板变量：{camera}, {scene}, {seg}
+- 支持模板变量：{camera}, {scene}, {seg}, {view_prefix}, {direction}
 - 预览更改后再应用
 - 可选择单个或多个数据集
 """
@@ -15,7 +15,7 @@ from pathlib import Path
 import argparse
 import sys
 
-# 相机名称列表（Transfer2格式）
+# 相机名称列表（用于遍历文件夹）
 CAMERA_NAMES = [
     'ftheta_camera_front_tele_30fov',
     'ftheta_camera_front_wide_120fov',
@@ -26,49 +26,80 @@ CAMERA_NAMES = [
     'ftheta_camera_rear_tele_30fov'
 ]
 
-# 预定义caption模板（1-6 是预设模板，应用于不同的功能）
+# 相机视角映射（用于生成 caption 前缀）
+CAMERA_VIEW_PREFIX = {
+    'ftheta_camera_front_tele_30fov': 'Front telephoto view',
+    'ftheta_camera_front_wide_120fov': 'Front wide view',
+    'ftheta_camera_cross_left_120fov': 'Left cross view',
+    'ftheta_camera_cross_right_120fov': 'Right cross view',
+    'ftheta_camera_rear_left_70fov': 'Rear left view',
+    'ftheta_camera_rear_right_70fov': 'Rear right view',
+    'ftheta_camera_rear_tele_30fov': 'Rear telephoto view'
+}
+
+# 场景朝向映射
+SCENE_DIRECTION = {
+    # 东→西
+    '001': 'east to west', '003': 'east to west', '007': 'east to west', '010': 'east to west',
+    '012': 'east to west', '024': 'east to west', '025': 'east to west', '027': 'east to west',
+    '029': 'east to west', '031': 'east to west', '034': 'east to west', '036': 'east to west',
+    '038': 'east to west', '041': 'east to west', '043': 'east to west', '079': 'east to west',
+    '080': 'east to west', '084': 'east to west', '086': 'east to west', '088': 'east to west',
+    # 北→南
+    '014': 'north to south', '017': 'north to south', '019': 'north to south', '020': 'north to south',
+    '022': 'north to south', '045': 'north to south', '047': 'north to south', '049': 'north to south',
+    '051': 'north to south', '053': 'north to south', '055': 'north to south', '057': 'north to south',
+    '059': 'north to south', '061': 'north to south', '063': 'north to south', '065': 'north to south',
+    '067': 'north to south', '069': 'north to south', '073': 'north to south', '075': 'north to south',
+    '077': 'north to south',
+    # 南→北
+    '015': 'south to north', '016': 'south to north', '021': 'south to north', '046': 'south to north',
+    '048': 'south to north', '050': 'south to north', '052': 'south to north', '054': 'south to north',
+    '056': 'south to north', '058': 'south to north', '060': 'south to north', '062': 'south to north',
+    '064': 'south to north', '066': 'south to north', '068': 'south to north', '070': 'south to north',
+    '072': 'south to north', '074': 'south to north', '076': 'south to north',
+    # 西→东
+    '002': 'west to east', '004': 'west to east', '006': 'west to east', '008': 'west to east',
+    '009': 'west to east', '013': 'west to east', '026': 'west to east', '028': 'west to east',
+    '030': 'west to east', '032': 'west to east', '033': 'west to east', '035': 'west to east',
+    '037': 'west to east', '039': 'west to east', '040': 'west to east', '042': 'west to east',
+    '044': 'west to east', '078': 'west to east', '081': 'west to east', '083': 'west to east',
+    '085': 'west to east', '087': 'west to east', '089': 'west to east',
+}
+
+# 详细场景描述（描述目标 RGB 输出）
+SCENE_DESCRIPTION = """Northern Chinese suburban intersection captured in early spring. Clear daytime conditions with bright blue sky and soft natural sunlight casting gentle shadows. Wide multi-lane asphalt road surface in good condition with crisp white lane markings, directional arrows, and crosswalk patterns. Beige and tan colored high-rise residential apartment buildings line both sides of the street, typical of Chinese suburban architecture. Rows of bare deciduous trees with leafless branches stand along the sidewalks, characteristic of late winter to early spring season. White painted metal safety railings separate the road from pedestrian areas. Green traffic signals mounted on overhead poles with directional signs. Street lamp posts visible along the road. Occasional mixed traffic including sedans, SUVs, buses, trucks, and non-motorized road users such as pedestrians, cyclists, and electric tricycles. Clean urban environment with well-maintained infrastructure."""
+
+# 预定义caption模板（统一描述目标 RGB 输出，包含朝向）
 PRESET_TEMPLATES = {
-    'depth': 'Sparse depth map from roadside LiDAR projected to {camera} viewpoint. Northern Chinese suburban intersection in early spring. Multi-lane asphalt roads with white lane markings and directional arrows. Beige/tan high-rise residential buildings. Bare deciduous trees. Red lanterns on lamp posts. Traffic signals and overhead signs. Mixed traffic including motor vehicles (cars, SUVs, buses, trucks) and non-motorized road users (pedestrians, cyclists, tricycles).',
-
-    'depth_dense': 'Dense depth map from roadside LiDAR with interpolation, projected to {camera} viewpoint. Suburban intersection with wide multi-lane roads, white lane markings, warm-toned high-rise apartments, bare winter trees, red lanterns, traffic lights. Mixed traffic including motor vehicles (cars, SUVs, buses, trucks) and non-motorized road users (pedestrians, cyclists, tricycles).',
-
-    'hdmap': '3D bounding box annotations projected to {camera} viewpoint. Urban intersection with detected motor vehicles (cars, SUVs, buses, trucks) and non-motorized road users (pedestrians, cyclists, tricycles). Multi-lane roads with directional markings. Chinese suburban environment with residential towers, bare trees, and traffic infrastructure.',
-
-    'blur': 'Sparse colored point cloud from roadside LiDAR-camera fusion, projected to {camera} viewpoint. Northern Chinese suburban intersection in early spring. Wide roads with white markings. Beige high-rise apartments. Bare trees. Red lanterns. Blue sky. Mixed traffic including motor vehicles (cars, SUVs, buses, trucks) and non-motorized road users (pedestrians, cyclists, tricycles).',
-
-    'blur_dense': 'Densified colored point cloud from roadside LiDAR-camera fusion, projected to {camera} viewpoint. Suburban intersection with multi-lane roads, warm-toned residential buildings, leafless trees, red lantern decorations, traffic signals. Mixed traffic including motor vehicles (cars, SUVs, buses, trucks) and non-motorized road users (pedestrians, cyclists, tricycles).',
-
-    'basic': 'RGB frame from {camera} viewpoint of ego vehicle. Northern Chinese suburban intersection in early spring. Wide multi-lane roads with white lane markings. Beige/tan high-rise apartments. Bare deciduous trees. Red lanterns on lamp posts. Traffic lights and overhead signs. Blue sky. Mixed traffic including motor vehicles (cars, SUVs, buses, trucks) and non-motorized road users (pedestrians, cyclists, tricycles).'
+    'unified': '{view_prefix}. The ego vehicle is traveling from {direction}. ' + SCENE_DESCRIPTION,
+    'depth': '{view_prefix}. The ego vehicle is traveling from {direction}. ' + SCENE_DESCRIPTION,
+    'depth_dense': '{view_prefix}. The ego vehicle is traveling from {direction}. ' + SCENE_DESCRIPTION,
+    'hdmap': '{view_prefix}. The ego vehicle is traveling from {direction}. ' + SCENE_DESCRIPTION,
+    'blur': '{view_prefix}. The ego vehicle is traveling from {direction}. ' + SCENE_DESCRIPTION,
+    'blur_dense': '{view_prefix}. The ego vehicle is traveling from {direction}. ' + SCENE_DESCRIPTION,
+    'basic': '{view_prefix}. The ego vehicle is traveling from {direction}. ' + SCENE_DESCRIPTION,
 }
 
 # 数据集名称到模板的自动映射
 DATASET_TEMPLATE_MAPPING = {
-    'DepthSparse': 'depth',
-    'DepthDense': 'depth_dense',
-    'HDMapBbox': 'hdmap',
-    'BlurProjection': 'blur',
-    'BlurDense': 'blur_dense',
-    'BasicProjection': 'basic'
+    'DepthSparse': 'unified',
+    'DepthDense': 'unified',
+    'HDMapBbox': 'unified',
+    'BlurProjection': 'unified',
+    'BlurDense': 'unified',
+    'BasicProjection': 'unified'
 }
 
 
 def find_datasets(base_dir):
-    """
-    查找所有数据集目录
-
-    Args:
-        base_dir: 基础目录
-
-    Returns:
-        dataset_dirs: 数据集目录列表
-    """
+    """查找所有数据集目录"""
     base_path = Path(base_dir)
 
     if not base_path.exists():
         print(f"错误: 目录不存在: {base_dir}")
         return []
 
-    # 查找所有包含 captions/ 子目录的目录
     dataset_dirs = []
     for item in base_path.iterdir():
         if item.is_dir():
@@ -80,23 +111,13 @@ def find_datasets(base_dir):
 
 
 def get_caption_files(dataset_dir):
-    """
-    获取数据集中所有caption JSON文件
-
-    Args:
-        dataset_dir: 数据集目录
-
-    Returns:
-        caption_files: JSON文件路径列表
-    """
+    """获取数据集中所有caption JSON文件"""
     captions_dir = dataset_dir / 'captions'
     caption_files = []
 
-    # 遍历所有相机目录
     for cam_name in CAMERA_NAMES:
         cam_dir = captions_dir / cam_name
         if cam_dir.exists():
-            # 收集该相机的所有JSON文件
             json_files = sorted(cam_dir.glob('*.json'))
             caption_files.extend(json_files)
 
@@ -104,15 +125,7 @@ def get_caption_files(dataset_dir):
 
 
 def parse_caption_filename(json_path):
-    """
-    从JSON文件名解析信息
-
-    Args:
-        json_path: JSON文件路径
-
-    Returns:
-        info: {camera, scene, seg} 字典
-    """
+    """从JSON文件名解析信息"""
     camera = json_path.parent.name
     filename = json_path.stem  # 如 "002_seg01"
 
@@ -120,24 +133,23 @@ def parse_caption_filename(json_path):
     scene = parts[0]
     seg = parts[1] if len(parts) > 1 else 'seg01'
 
+    # 获取简化的视角前缀
+    view_prefix = CAMERA_VIEW_PREFIX.get(camera, camera.replace('ftheta_', '').replace('_', ' '))
+
+    # 获取行驶朝向
+    direction = SCENE_DIRECTION.get(scene, 'unknown direction')
+
     return {
         'camera': camera,
+        'view_prefix': view_prefix,
         'scene': scene,
-        'seg': seg
+        'seg': seg,
+        'direction': direction
     }
 
 
 def generate_caption(template, info):
-    """
-    根据模板生成caption
-
-    Args:
-        template: Caption模板
-        info: {camera, scene, seg} 字典
-
-    Returns:
-        caption: 生成的caption
-    """
+    """根据模板生成caption"""
     return template.format(**info)
 
 
@@ -165,8 +177,8 @@ def preview_changes(caption_files, template, max_preview=5):
         new_caption = generate_caption(template, info)
 
         print(f"\n文件: {json_path.relative_to(json_path.parents[3])}")
-        print(f"  旧: {old_caption}")
-        print(f"  新: {new_caption}")
+        print(f"  旧: {old_caption[:100]}...")
+        print(f"  新: {new_caption[:100]}...")
 
     if len(caption_files) > max_preview:
         print(f"\n... 还有 {len(caption_files) - max_preview} 个文件")
@@ -283,7 +295,7 @@ def interactive_mode(base_dir):
 
     presets = list(PRESET_TEMPLATES.items())
     for i, (key, template) in enumerate(presets, 1):
-        print(f"  {i}) {key}: \"{template}\"")
+        print(f"  {i}) {key}: \"{template[:60]}...\"")
     print(f"  {len(presets) + 1}) 自定义模板")
 
     # 选择模板
@@ -348,7 +360,7 @@ def interactive_mode(base_dir):
             template = presets[template_num - 1][1]
             print(f"\n使用模板: \"{template[:80]}...\"")
         elif template_num == len(presets) + 1:
-            template = input("\n请输入自定义模板（可用变量: {camera}, {scene}, {seg}）: ").strip()
+            template = input("\n请输入自定义模板（可用变量: {camera}, {view_prefix}, {scene}, {seg}, {direction}）: ").strip()
             if not template:
                 print("错误: 模板不能为空")
                 return
@@ -388,7 +400,7 @@ def main():
                         help='指定数据集名称（如 DepthSparse）')
 
     parser.add_argument('--template', type=str,
-                        help='Caption模板（支持 {camera}, {scene}, {seg}）')
+                        help='Caption模板（支持 {camera}, {view_prefix}, {scene}, {seg}, {direction}）')
 
     parser.add_argument('--preset', type=str,
                         choices=list(PRESET_TEMPLATES.keys()),

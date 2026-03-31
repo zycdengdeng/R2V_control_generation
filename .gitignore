@@ -1,9 +1,24 @@
-# 临时文件
-temp/
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
 
-# 输出目录（每个项目下的场景输出）
-*/[0-9][0-9][0-9]/
+blur投影/[0-9]*/
+blur稠密化投影/[0-9]*/
+depth投影/[0-9]*/
+depth稠密化投影/[0-9]*/
+HDMap投影/[0-9]*/
+基本点云投影/[0-9]*/
+
+dense_projection/blur投影/[0-9]*/
+dense_projection/blur稠密化投影/[0-9]*/
+dense_projection/depth投影/[0-9]*/
+dense_projection/depth稠密化投影/[0-9]*/
+dense_projection/HDMap投影/[0-9]*/
+dense_projection/基本点云投影/[0-9]*/
+dense_projection/temp/
+
+transfer_video_maker/output/
+transfer_video_maker/output_full_data/
+transfer_video_maker/output_test_evaluation/
+
+temp/
+image.png

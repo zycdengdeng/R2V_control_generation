@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-批量blur稠密化投影处理 V2 - 统一交互版
+批量depth稠密化投影处理 V2 - 统一交互版
 支持多场景、统一批次选择、固定标定路径
-使用路侧相机着色 + 4级稠密化处理
+输出深度图：近白远黑+稠密化，.npy + .jpg
 """
 
 import os
@@ -24,13 +24,13 @@ PROJECTOR_SCRIPT = Path(__file__).resolve().parent / "undistort_projection_multi
 
 def run_single_projection(args):
     """运行单个投影任务"""
-    pcd_path, timestamp_ms, output_dir, roadside_calib, roadside_images, \
-    vehicle_calib, gt_images_folder, transform_json, threads_per_frame = args
+    pcd_path, timestamp_ms, output_dir, roadside_calib, vehicle_calib, \
+    gt_images_folder, transform_json, threads_per_frame = args
 
     try:
         # 动态导入核心模块
         import importlib.util
-        spec = importlib.util.spec_from_file_location("blur_dense_projector_v2", PROJECTOR_SCRIPT)
+        spec = importlib.util.spec_from_file_location("depth_dense_projector_v2", PROJECTOR_SCRIPT)
         projector_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(projector_module)
 
@@ -45,8 +45,8 @@ def run_single_projection(args):
         transforms = run_single_projection.transforms_cache[transform_json]
 
         # 创建投影器
-        projector = projector_module.BlurDenseProjectorMultiThread(
-            roadside_calib, roadside_images, vehicle_calib, gt_images_folder, transforms
+        projector = projector_module.DepthDenseProjectorMultiThread(
+            roadside_calib, vehicle_calib, gt_images_folder, transforms
         )
 
         # 处理单帧
@@ -130,7 +130,7 @@ def process_single_scene(scene_id, config, num_processes, threads_per_frame, pro
     transforms = common_utils.load_world2lidar_transforms(scene_transform_json, show_range=True)
 
     # 创建输出目录
-    output_paths = common_utils.get_unified_output_paths(output_root, scene_id, 'blur_dense')
+    output_paths = common_utils.get_unified_output_paths(output_root, scene_id, 'depth_dense')
     common_utils.create_output_dirs(output_paths)
 
     print(f"\n📂 输出目录: {output_paths['root']}")
@@ -150,9 +150,8 @@ def process_single_scene(scene_id, config, num_processes, threads_per_frame, pro
             int(timestamp_ms),
             str(output_frame_dir),
             scene_paths['roadside_calib'],
-            scene_paths['roadside_images'],  # 路侧图像文件夹
             scene_paths['vehicle_calib'],
-            scene_paths.get('vehicle_images', scene_paths['roadside_images']),  # GT图像
+            scene_paths.get('vehicle_images', scene_paths['roadside_images']),  # 优先使用车端GT图像
             scene_transform_json,
             threads_per_frame
         ))
@@ -214,7 +213,7 @@ def process_single_scene(scene_id, config, num_processes, threads_per_frame, pro
 
 def main():
     print("\n" + "="*80)
-    print("🎯 Blur稠密化投影 - 批量处理工具 V2 (路侧着色+4级稠密化)")
+    print("Depth稠密化投影 - 批量处理工具 V2 (深度图：近白远黑+稠密化)")
     print("="*80)
 
     if not PROJECTOR_SCRIPT.exists():
