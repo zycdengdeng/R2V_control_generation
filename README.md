@@ -40,8 +40,8 @@
 ！ 最终用于训练模型的引到就是 ./transfer_video_maker/output中的内容
 
 
-###### 额外补充
-## 因为有一些clip有问题，写指令看看哪个里面缺少GT，然后确定后再次检查。这是数据集里某些clip也许会出现掉帧的情况，如果发现有掉帧，检查了videos.mp4不足29帧，就需要用邻近帧补帧
+### 额外补充
+### 因为有一些clip有问题，写指令看看哪个里面缺少GT，然后确定后再次检查。这是数据集里某些clip也许会出现掉帧的情况，如果发现有掉帧，检查了videos.mp4不足29帧，就需要用邻近帧补帧
 for clip in 082 083 084 085 086; do
   for d in /mnt/zihanw/proj_utils_pro/blur投影/$clip/$clip/[0-9]*/; do name=$(basename "$d"); gt=$(ls "$d/gt" 2>/dev/null | wc -l); proj=$(ls "$d/proj" 2>/dev/null | wc -l); if ! { [ "$gt" -eq 7 ] && { [ "$proj" -eq 7 ] || [ "$proj" -eq 14 ]; }; }; then echo "blur/$clip/$name: gt=$gt, proj=$proj"; fi; done
   for d in /mnt/zihanw/proj_utils_pro/depth投影/$clip/$clip/[0-9]*/; do name=$(basename "$d"); gt=$(ls "$d/gt" 2>/dev/null | wc -l); depth=$(ls "$d/depth" 2>/dev/null | wc -l); if ! { [ "$gt" -eq 7 ] && { [ "$depth" -eq 7 ] || [ "$depth" -eq 14 ]; }; }; then echo "depth/$clip/$name: gt=$gt, depth=$depth"; fi; done
