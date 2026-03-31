@@ -53,36 +53,36 @@ done
 1. 先 dry_run 检查缺失情况
 cd /mnt/zihanw/proj_utils_pro/transfer_video_maker
 
-# 检查 blur投影
+### 检查 blur投影
 python fix_missing_gt.py \
     --input_dir "/mnt/zihanw/proj_utils_pro/blur投影" \
     --scenes 082 083 084 085 086 \
     --dry_run
 
-# 检查 depth投影
+### 检查 depth投影
 python fix_missing_gt.py \
     --input_dir "/mnt/zihanw/proj_utils_pro/depth投影" \
     --scenes 082 083 084 085 086 \
     --dry_run
 
-# 检查 HDMap投影
+### 检查 HDMap投影
 python fix_missing_gt.py \
     --input_dir "/mnt/zihanw/proj_utils_pro/HDMap投影" \
     --scenes 082 083 084 085 086 \
     --dry_run
 
 2. 确认后执行实际修复
-# 修复 blur投影
+### 修复 blur投影
 python fix_missing_gt.py \
     --input_dir "/mnt/zihanw/proj_utils_pro/blur投影" \
     --scenes 082 083 084 085 086
 
-# 修复 depth投影
+### 修复 depth投影
 python fix_missing_gt.py \
     --input_dir "/mnt/zihanw/proj_utils_pro/depth投影" \
     --scenes 082 083 084 085 086
 
-# 修复 HDMap投影
+### 修复 HDMap投影
 python fix_missing_gt.py \
     --input_dir "/mnt/zihanw/proj_utils_pro/HDMap投影" \
     --scenes 082 083 084 085 086
